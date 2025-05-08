@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as _React from 'react';
@@ -10,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PackageOpen, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-type SortKey = 'submittedAt' | 'projectTitle' | 'name';
+type SortKey = 'submittedAt' | 'projectTitle' | 'name' | 'status';
 type SortOrder = 'asc' | 'desc';
 
 export default function AdminDashboardPage() {
@@ -43,9 +44,10 @@ export default function AdminDashboardPage() {
     fetchSubmissions();
   };
 
-  const handleDeleteSubmission = async (id: string) => {
-    // This function is called by SubmissionsTable after a successful delete action
-    // to refresh the list. It essentially refetches all submissions.
+  const handleActionSuccess = async (id: string) => {
+    // This function is called by SubmissionsTable after a successful action
+    // to refresh the list. It refetches all submissions.
+    // The 'id' parameter is available if specific row refresh logic is needed later.
     await fetchSubmissions();
   };
 
@@ -57,7 +59,8 @@ export default function AdminDashboardPage() {
         (s) =>
           s.projectTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
           s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          s.email.toLowerCase().includes(searchTerm.toLowerCase())
+          s.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          s.status.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -68,7 +71,11 @@ export default function AdminDashboardPage() {
       if (sortKey === 'submittedAt') {
          valA = new Date(a.submittedAt).getTime();
          valB = new Date(b.submittedAt).getTime();
+      } else if (sortKey === 'projectTitle' || sortKey === 'name' || sortKey === 'status') {
+        valA = String(valA).toLowerCase();
+        valB = String(valB).toLowerCase();
       }
+
 
       let comparison = 0;
       if (valA > valB) {
@@ -115,7 +122,7 @@ export default function AdminDashboardPage() {
         <CardHeader>
           <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
              <Input
-                placeholder="Search by title, name, or email..."
+                placeholder="Search by title, name, email or status..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="max-w-sm"
@@ -132,6 +139,7 @@ export default function AdminDashboardPage() {
                   <SelectItem value="submittedAt">Date Submitted</SelectItem>
                   <SelectItem value="projectTitle">Project Title</SelectItem>
                   <SelectItem value="name">Client Name</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
                 </SelectContent>
               </Select>
               <Select
@@ -151,7 +159,7 @@ export default function AdminDashboardPage() {
         </CardHeader>
         <CardContent>
           {filteredAndSortedSubmissions.length > 0 ? (
-            <SubmissionsTable submissions={filteredAndSortedSubmissions} onDelete={handleDeleteSubmission} />
+            <SubmissionsTable submissions={filteredAndSortedSubmissions} onActionSuccess={handleActionSuccess} />
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <PackageOpen className="h-16 w-16 text-muted-foreground mb-4" />

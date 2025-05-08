@@ -1,7 +1,8 @@
+
 "use client";
 
 import * as _React from 'react';
-import type { ProjectSubmission } from '@/types';
+import type { ProjectSubmission, SubmissionStatus } from '@/types';
 import {
   Table,
   TableBody,
@@ -20,7 +21,7 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Trash2, Eye, FileText } from 'lucide-react';
+import { MoreHorizontal, Trash2, Eye, FileText, CheckCircle, XCircle, AlertTriangle, ThumbsUp } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import {
   AlertDialog,
@@ -33,43 +34,148 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
-import { deleteProject } from '@/app/actions';
+import { deleteProject, acceptProject, acceptProjectWithConditions, rejectProject } from '@/app/actions';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input'; // Although not used directly, Textarea might rely on it or common styles.
 
 interface SubmissionsTableProps {
   submissions: ProjectSubmission[];
-  onDelete: (id: string) => Promise<void>; // Callback to refresh data after delete
+  onActionSuccess: (id: string) => Promise<void>; 
 }
 
-export function SubmissionsTable({ submissions, onDelete }: SubmissionsTableProps) {
+const getStatusBadgeVariant = (status: SubmissionStatus): 'default' | 'secondary' | 'destructive' | 'outline' => {
+  switch (status) {
+    case 'accepted':
+      return 'default'; // Default often maps to primary, which is teal - good for accepted
+    case 'acceptedWithConditions':
+      return 'secondary'; // This is typically a muted gray, we can make it more like a warning
+    case 'rejected':
+      return 'destructive';
+    case 'pending':
+    default:
+      return 'outline';
+  }
+};
+
+const formatStatusText = (status: SubmissionStatus): string => {
+  switch (status) {
+    case 'accepted':
+      return 'Accepted';
+    case 'acceptedWithConditions':
+      return 'Accepted (Conditional)';
+    case 'rejected':
+      return 'Rejected';
+    case 'pending':
+    default:
+      return 'Pending';
+  }
+};
+
+
+export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTableProps) {
   const { toast } = useToast();
   const [isViewModalOpen, setIsViewModalOpen] = _React.useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = _React.useState(false);
+  const [isAcceptWithConditionsModalOpen, setIsAcceptWithConditionsModalOpen] = _React.useState(false);
+  const [isRejectWithReasonModalOpen, setIsRejectWithReasonModalOpen] = _React.useState(false);
+  
   const [selectedSubmission, setSelectedSubmission] = _React.useState<ProjectSubmission | null>(null);
-  const [submissionToDelete, setSubmissionToDelete] = _React.useState<ProjectSubmission | null>(null);
+  const [submissionForAction, setSubmissionForAction] = _React.useState<ProjectSubmission | null>(null);
+
+  const [conditions, setConditions] = _React.useState('');
+  const [reason, setReason] = _React.useState('');
+  const [isProcessing, setIsProcessing] = _React.useState(false);
+
 
   const handleViewDetails = (submission: ProjectSubmission) => {
     setSelectedSubmission(submission);
     setIsViewModalOpen(true);
   };
 
-  const handleDeleteConfirm = (submission: ProjectSubmission) => {
-    setSubmissionToDelete(submission);
+  const openDeleteModal = (submission: ProjectSubmission) => {
+    setSubmissionForAction(submission);
     setIsDeleteModalOpen(true);
   };
   
   const handleDelete = async () => {
-    if (submissionToDelete) {
-      const result = await deleteProject(submissionToDelete.id);
+    if (submissionForAction) {
+      setIsProcessing(true);
+      const result = await deleteProject(submissionForAction.id);
       if (result.success) {
         toast({ title: 'Success', description: result.message });
-        await onDelete(submissionToDelete.id); // Trigger data refresh
+        await onActionSuccess(submissionForAction.id); 
       } else {
         toast({ title: 'Error', description: result.message, variant: 'destructive' });
       }
       setIsDeleteModalOpen(false);
-      setSubmissionToDelete(null);
+      setSubmissionForAction(null);
+      setIsProcessing(false);
     }
   };
+
+  const handleAccept = async (submission: ProjectSubmission) => {
+    setIsProcessing(true);
+    const result = await acceptProject(submission.id);
+     if (result.success) {
+        toast({ title: 'Success', description: result.message });
+        await onActionSuccess(submission.id);
+      } else {
+        toast({ title: 'Error', description: result.message, variant: 'destructive' });
+      }
+    setIsProcessing(false);
+  };
+
+  const openAcceptWithConditionsModal = (submission: ProjectSubmission) => {
+    setSubmissionForAction(submission);
+    setConditions(submission.acceptanceConditions || '');
+    setIsAcceptWithConditionsModalOpen(true);
+  };
+
+  const handleConfirmAcceptWithConditions = async () => {
+    if (submissionForAction && conditions.trim()) {
+      setIsProcessing(true);
+      const result = await acceptProjectWithConditions(submissionForAction.id, conditions);
+      if (result.success) {
+        toast({ title: 'Success', description: result.message });
+        await onActionSuccess(submissionForAction.id);
+        setIsAcceptWithConditionsModalOpen(false);
+        setSubmissionForAction(null);
+        setConditions('');
+      } else {
+        toast({ title: 'Error', description: result.message, variant: 'destructive' });
+      }
+      setIsProcessing(false);
+    } else if (!conditions.trim()) {
+       toast({ title: 'Validation Error', description: 'Conditions cannot be empty.', variant: 'destructive' });
+    }
+  };
+
+  const openRejectWithReasonModal = (submission: ProjectSubmission) => {
+    setSubmissionForAction(submission);
+    setReason(submission.rejectionReason || '');
+    setIsRejectWithReasonModalOpen(true);
+  };
+
+  const handleConfirmRejectWithReason = async () => {
+    if (submissionForAction && reason.trim()) {
+      setIsProcessing(true);
+      const result = await rejectProject(submissionForAction.id, reason);
+      if (result.success) {
+        toast({ title: 'Success', description: result.message });
+        await onActionSuccess(submissionForAction.id);
+        setIsRejectWithReasonModalOpen(false);
+        setSubmissionForAction(null);
+        setReason('');
+      } else {
+        toast({ title: 'Error', description: result.message, variant: 'destructive' });
+      }
+      setIsProcessing(false);
+    } else if (!reason.trim()) {
+       toast({ title: 'Validation Error', description: 'Reason cannot be empty.', variant: 'destructive' });
+    }
+  };
+
 
   return (
     <>
@@ -82,13 +188,14 @@ export function SubmissionsTable({ submissions, onDelete }: SubmissionsTableProp
               <TableHead className="hidden lg:table-cell">Email</TableHead>
               <TableHead className="hidden sm:table-cell">Submitted</TableHead>
               <TableHead className="text-center">Files</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {submissions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                   No submissions yet.
                 </TableCell>
               </TableRow>
@@ -111,21 +218,45 @@ export function SubmissionsTable({ submissions, onDelete }: SubmissionsTableProp
                        <Badge variant="outline">0</Badge>
                     )}
                   </TableCell>
+                  <TableCell>
+                    <Badge variant={getStatusBadgeVariant(submission.status)} className={submission.status === 'acceptedWithConditions' ? 'bg-amber-500 text-white' : ''}>
+                      {formatStatusText(submission.status)}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={isProcessing}>
                           <MoreHorizontal className="h-4 w-4" />
                           <span className="sr-only">Actions</span>
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleViewDetails(submission)}>
                           <Eye className="mr-2 h-4 w-4" /> View Details
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDeleteConfirm(submission)} className="text-destructive">
+                        <DropdownMenuSeparator />
+                        {submission.status === 'pending' && (
+                          <>
+                            <DropdownMenuItem onClick={() => handleAccept(submission)}>
+                              <ThumbsUp className="mr-2 h-4 w-4" /> Accept
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openAcceptWithConditionsModal(submission)}>
+                              <AlertTriangle className="mr-2 h-4 w-4" /> Accept with Conditions
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openRejectWithReasonModal(submission)}>
+                              <XCircle className="mr-2 h-4 w-4" /> Reject with Reason
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                         {(submission.status === 'accepted' || submission.status === 'acceptedWithConditions' || submission.status === 'rejected') && (
+                            <DropdownMenuItem onClick={() => openRejectWithReasonModal(submission)} className="text-destructive_text-amber-600">
+                                <XCircle className="mr-2 h-4 w-4" /> Update Rejection / Re-evaluate
+                            </DropdownMenuItem>
+                         )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => openDeleteModal(submission)} className="text-destructive">
                           <Trash2 className="mr-2 h-4 w-4" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -149,6 +280,16 @@ export function SubmissionsTable({ submissions, onDelete }: SubmissionsTableProp
           </AlertDialogHeader>
           {selectedSubmission && (
             <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+               <div>
+                <h4 className="font-semibold">Status</h4>
+                <p><Badge variant={getStatusBadgeVariant(selectedSubmission.status)} className={selectedSubmission.status === 'acceptedWithConditions' ? 'bg-amber-500 text-white' : ''}>{formatStatusText(selectedSubmission.status)}</Badge></p>
+                {selectedSubmission.status === 'acceptedWithConditions' && selectedSubmission.acceptanceConditions && (
+                  <p className="text-sm mt-1"><strong>Conditions:</strong> {selectedSubmission.acceptanceConditions}</p>
+                )}
+                {selectedSubmission.status === 'rejected' && selectedSubmission.rejectionReason && (
+                  <p className="text-sm mt-1"><strong>Reason for Rejection:</strong> {selectedSubmission.rejectionReason}</p>
+                )}
+              </div>
               <div>
                 <h4 className="font-semibold">Contact Information</h4>
                 <p><strong>Email:</strong> {selectedSubmission.email}</p>
@@ -187,13 +328,69 @@ export function SubmissionsTable({ submissions, onDelete }: SubmissionsTableProp
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the submission
-              "{submissionToDelete?.projectTitle}" by {submissionToDelete?.name}.
+              "{submissionForAction?.projectTitle}" by {submissionForAction?.name}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-              Delete
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={isProcessing} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+              {isProcessing ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Accept with Conditions Modal */}
+      <AlertDialog open={isAcceptWithConditionsModalOpen} onOpenChange={setIsAcceptWithConditionsModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Accept with Conditions</AlertDialogTitle>
+            <AlertDialogDescription>
+              Specify the conditions for accepting the project "{submissionForAction?.projectTitle}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4 space-y-2">
+            <Label htmlFor="conditions">Conditions</Label>
+            <Textarea 
+              id="conditions" 
+              value={conditions} 
+              onChange={(e) => setConditions(e.target.value)} 
+              placeholder="e.g., Budget approval required, timeline adjustment needed."
+              className="min-h-[100px]"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing} onClick={() => {setSubmissionForAction(null); setConditions('');}}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmAcceptWithConditions} disabled={isProcessing || !conditions.trim()}>
+              {isProcessing ? 'Accepting...' : 'Accept with Conditions'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reject with Reason Modal */}
+      <AlertDialog open={isRejectWithReasonModalOpen} onOpenChange={setIsRejectWithReasonModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject with Reason</AlertDialogTitle>
+            <AlertDialogDescription>
+              Provide a reason for rejecting the project "{submissionForAction?.projectTitle}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+           <div className="py-4 space-y-2">
+            <Label htmlFor="reason">Reason for Rejection</Label>
+            <Textarea 
+              id="reason" 
+              value={reason} 
+              onChange={(e) => setReason(e.target.value)} 
+              placeholder="e.g., Project scope too broad, budget mismatch."
+              className="min-h-[100px]"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing} onClick={() => {setSubmissionForAction(null); setReason('');}}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRejectWithReason} disabled={isProcessing || !reason.trim()} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+               {isProcessing ? 'Rejecting...' : 'Reject Project'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
