@@ -35,6 +35,13 @@ export default function AdminLayout({
     }
   }, [isAuthenticated, isLoading, pathname, router]);
 
+  _React.useEffect(() => {
+    // If on signin page and authenticated, redirect to admin dashboard
+    if (isAuthenticated && pathname === '/admin/signin') {
+      router.push('/admin');
+    }
+  }, [isAuthenticated, pathname, router]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -56,10 +63,10 @@ export default function AdminLayout({
     return null; 
   }
   
-  // If on signin page and authenticated, redirect to admin dashboard
+  // If on signin page and authenticated, the useEffect above will handle redirection.
+  // Return null here to prevent rendering the sign-in page content if redirecting.
   if (isAuthenticated && pathname === '/admin/signin') {
-    router.push('/admin');
-    return null; // Prevent rendering sign-in page if already authed
+    return null; 
   }
 
 
@@ -135,3 +142,4 @@ export default function AdminLayout({
     </SidebarProvider>
   );
 }
+
