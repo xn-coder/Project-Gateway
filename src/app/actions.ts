@@ -94,8 +94,14 @@ export async function submitProject(
     await setDoc(newSubmissionRef, submissionDataForFirestore);
 
     console.log('New Submission ID (Firestore):', submissionId);
-    console.log('Simulating email notification to owner about new submission...');
-    console.log('Subject: New Project Submission - ' + submissionDataForFirestore.projectTitle);
+    
+    // Simulate email notification to client
+    console.log(`Simulating email to client ${submissionDataForFirestore.email}: Your project "${submissionDataForFirestore.projectTitle}" has been successfully submitted. We will review it shortly.`);
+
+    // Simulate email notification to admin
+    const adminEmail = "admin@example.com"; // Placeholder for admin email
+    console.log(`Simulating email to admin (${adminEmail}): New project submission received: "${submissionDataForFirestore.projectTitle}" by ${submissionDataForFirestore.name} (${submissionDataForFirestore.email}).`);
+
 
     return { success: true, message: 'Project submitted successfully!', submissionId };
   } catch (error) {
@@ -159,15 +165,22 @@ async function updateProjectStatus(id: string, statusUpdate: Partial<ProjectSubm
     if (docSnap.exists()) {
         const submissionData = fromFirestoreDoc(docSnap.id, docSnap.data());
         if (submissionData) {
-            let emailMessage = `Your project "${submissionData.projectTitle}" status has been updated.`;
+            let emailSubject = `Update on your project: "${submissionData.projectTitle}"`;
+            let emailMessageBody = `The status of your project "${submissionData.projectTitle}" has been updated to ${submissionData.status}.`;
+
             if (submissionData.status === 'accepted') {
-                emailMessage = `Your project "${submissionData.projectTitle}" has been accepted.`;
+                emailSubject = `Congratulations! Your project "${submissionData.projectTitle}" has been accepted!`;
+                emailMessageBody = `We are pleased to inform you that your project "${submissionData.projectTitle}" has been accepted. We will be in touch shortly with the next steps.`;
             } else if (submissionData.status === 'acceptedWithConditions' && submissionData.acceptanceConditions) {
-                emailMessage = `Your project "${submissionData.projectTitle}" has been accepted with the following conditions: ${submissionData.acceptanceConditions}`;
+                emailSubject = `Your project "${submissionData.projectTitle}" has been accepted with conditions`;
+                emailMessageBody = `Your project "${submissionData.projectTitle}" has been accepted with the following conditions: "${submissionData.acceptanceConditions}". Please review these conditions. We will contact you to discuss them further.`;
             } else if (submissionData.status === 'rejected' && submissionData.rejectionReason) {
-                emailMessage = `Your project "${submissionData.projectTitle}" has been rejected. Reason: ${submissionData.rejectionReason}`;
+                emailSubject = `Update on your project submission: "${submissionData.projectTitle}"`;
+                emailMessageBody = `We regret to inform you that after careful consideration, your project "${submissionData.projectTitle}" has been rejected. Reason: "${submissionData.rejectionReason}". If you would like to discuss this further, please feel free to contact us.`;
             }
-            console.log(`Simulating email to client ${submissionData.email}: ${emailMessage}`);
+            console.log(`Simulating email to client ${submissionData.email}:`);
+            console.log(`Subject: ${emailSubject}`);
+            console.log(`Body: ${emailMessageBody}`);
         }
     }
     return { success: true, message: `Project ${statusUpdate.status || 'status'} updated successfully.` };
