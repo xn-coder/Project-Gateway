@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, type ChangeEvent } from 'react'; // Combined React imports
+import { useState, type ChangeEvent } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
@@ -26,7 +27,7 @@ import { ScrollArea } from './ui/scroll-area';
 export function SubmissionForm() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const form = useForm<SubmissionFormData>({
     resolver: zodResolver(submissionSchema),
@@ -36,36 +37,45 @@ export function SubmissionForm() {
       phone: '',
       projectTitle: '',
       projectDescription: '',
-      files: [],
+      file: undefined, // Changed from files: []
     },
   });
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      const newFiles = Array.from(event.target.files);
-      const allFiles = [...selectedFiles, ...newFiles].slice(0, 5); // Max 5 files
-      setSelectedFiles(allFiles);
-      form.setValue('files', allFiles, { shouldValidate: true });
+    if (event.target.files && event.target.files.length > 0) {
+      const file = event.target.files[0]; // Take the first file
+      setSelectedFile(file);
+      form.setValue('file', file, { shouldValidate: true });
+    } else {
+      // If no file is selected (e.g., user cancels file dialog), clear existing selection
+      setSelectedFile(null);
+      form.setValue('file', undefined, { shouldValidate: true });
     }
+     // Reset the input value to allow re-selecting the same file after removing it
+    event.target.value = '';
   };
 
-  const removeFile = (index: number) => {
-    const newFiles = selectedFiles.filter((_, i) => i !== index);
-    setSelectedFiles(newFiles);
-    form.setValue('files', newFiles, { shouldValidate: true });
+  const removeFile = () => {
+    setSelectedFile(null);
+    form.setValue('file', undefined, { shouldValidate: true });
   };
 
   async function onSubmit(data: SubmissionFormData) {
     setIsSubmitting(true);
     try {
-      const result = await submitProject(data);
+      // Ensure 'file' is undefined if null, not passed as null to the action
+      const dataToSubmit = {
+        ...data,
+        file: data.file || undefined,
+      };
+      const result = await submitProject(dataToSubmit);
       if (result.success) {
         toast({
           title: 'Submission Successful!',
           description: result.message,
         });
         form.reset();
-        setSelectedFiles([]);
+        setSelectedFile(null);
       } else {
         toast({
           title: 'Submission Failed',
@@ -172,10 +182,10 @@ export function SubmissionForm() {
 
             <FormField
               control={form.control}
-              name="files"
-              render={() => (
+              name="file" // Changed from 'files'
+              render={() => ( // field prop is not directly used here for file input
                 <FormItem>
-                  <FormLabel>Supporting Documents (Optional)</FormLabel>
+                  <FormLabel>Supporting Document (Optional)</FormLabel>
                   <FormControl>
                     <div>
                       <Label
@@ -184,16 +194,16 @@ export function SubmissionForm() {
                       >
                         <UploadCloud className="w-10 h-10 text-muted-foreground mb-2" />
                         <span className="text-sm text-muted-foreground">
-                          Drag & drop files here, or click to select
+                          {selectedFile ? selectedFile.name : "Drag & drop a file here, or click to select"}
                         </span>
                         <span className="text-xs text-muted-foreground mt-1">
-                          Max 5 files, 5MB each. PDF, DOCX, TXT, JPG, PNG.
+                          Max 1 file, 200KB. PDF, DOCX, TXT, JPG, PNG.
                         </span>
                       </Label>
                       <Input
                         id="file-upload"
                         type="file"
-                        multiple
+                        // removed 'multiple' attribute
                         className="hidden"
                         onChange={handleFileChange}
                         accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.txt"
@@ -201,36 +211,31 @@ export function SubmissionForm() {
                     </div>
                   </FormControl>
                   <FormMessage />
-                  {selectedFiles.length > 0 && (
-                    <ScrollArea className="h-auto max-h-40 mt-2">
-                       <div className="space-y-2 p-1">
-                        {selectedFiles.map((file, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-2 border rounded-md bg-secondary/50"
-                          >
-                            <div className="flex items-center space-x-2 overflow-hidden">
-                              <FileText className="h-5 w-5 shrink-0 text-secondary-foreground" />
-                              <span className="text-sm text-secondary-foreground truncate" title={file.name}>
-                                {file.name}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                ({(file.size / 1024).toFixed(1)} KB)
-                              </span>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => removeFile(index)}
-                            >
-                              <XCircle className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        ))}
+                  {selectedFile && (
+                    <div className="mt-2">
+                      <div
+                        className="flex items-center justify-between p-2 border rounded-md bg-secondary/50"
+                      >
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                          <FileText className="h-5 w-5 shrink-0 text-secondary-foreground" />
+                          <span className="text-sm text-secondary-foreground truncate" title={selectedFile.name}>
+                            {selectedFile.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            ({(selectedFile.size / 1024).toFixed(1)} KB)
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={removeFile}
+                        >
+                          <XCircle className="h-4 w-4 text-destructive" />
+                        </Button>
                       </div>
-                    </ScrollArea>
+                    </div>
                   )}
                 </FormItem>
               )}

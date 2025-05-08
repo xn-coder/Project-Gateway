@@ -3,7 +3,7 @@
 
 import type { ProjectSubmission } from '@/types';
 import { submissionSchema, type SubmissionFormData } from '@/lib/schemas';
-import { db, storage } from '@/lib/firebase/config'; // db is Firestore
+import { db } from '@/lib/firebase/config'; // db is Firestore
 import {
   collection,
   doc,
@@ -19,12 +19,17 @@ import {
   Timestamp,
   DocumentData,
 } from 'firebase/firestore';
-import {
-  ref as storageRef,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from 'firebase/storage';
+
+// Helper to convert file to Base64 Data URI
+const fileToDataURI = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 
 // Helper to convert Firestore document data to ProjectSubmission type
 const fromFirestoreDoc = (id: string, data: DocumentData): ProjectSubmission | null => {
@@ -38,7 +43,12 @@ const fromFirestoreDoc = (id: string, data: DocumentData): ProjectSubmission | n
     phone: data.phone || undefined,
     projectTitle: data.projectTitle,
     projectDescription: data.projectDescription,
-    files: data.files || [],
+    file: data.file ? { 
+      name: data.file.name, 
+      size: data.file.size, 
+      type: data.file.type, 
+      content: data.file.content 
+    } : undefined,
     submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate().toISOString() : (data.submittedAt || new Date().toISOString()),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
     status: data.status,
@@ -54,43 +64,34 @@ export async function submitProject(
   const validationResult = submissionSchema.safeParse(data);
 
   if (!validationResult.success) {
-    return { success: false, message: 'Invalid data. Please check the form.' };
+    // Construct a more detailed error message from Zod errors
+    const errorMessages = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+    return { success: false, message: `Invalid data: ${errorMessages}` };
   }
 
   try {
-    // Create a new document reference with an auto-generated ID in the "submissions" collection
     const newSubmissionRef = doc(collection(db, 'submissions'));
     const submissionId = newSubmissionRef.id;
 
-    const fileDataForFirestore: { name: string; size: number; type: string; url: string }[] = [];
-    if (validationResult.data.files && validationResult.data.files.length > 0) {
-      for (const file of validationResult.data.files) {
-        const fileStoragePath = `submissions/${submissionId}/${Date.now()}_${file.name}`;
-        const sRef = storageRef(storage, fileStoragePath);
-        
-        const uploadResult = await uploadBytes(sRef, file);
-        const downloadUrl = await getDownloadURL(uploadResult.ref);
-        
-        fileDataForFirestore.push({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          url: downloadUrl,
-        });
-      }
+    let fileDataForFirestore: { name: string; size: number; type: string; content: string } | undefined = undefined;
+    
+    if (validationResult.data.file) {
+      const file = validationResult.data.file;
+      const fileContent = await fileToDataURI(file);
+      fileDataForFirestore = {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        content: fileContent, // Base64 data URI
+      };
     }
 
     const submissionDataForFirestore = {
       ...validationResult.data,
-      files: fileDataForFirestore, // Store file metadata including download URL
-      submittedAt: firestoreServerTimestamp(), // Use Firestore server timestamp
+      file: fileDataForFirestore, // Store file metadata and content
+      submittedAt: firestoreServerTimestamp(),
       status: 'pending',
     };
-    // Remove the original 'files' property if it contained File objects (it shouldn't at this point based on schema processing)
-    // but as a safeguard:
-    delete (submissionDataForFirestore as any).files; 
-    submissionDataForFirestore.files = fileDataForFirestore;
-
 
     await setDoc(newSubmissionRef, submissionDataForFirestore);
 
@@ -100,7 +101,7 @@ export async function submitProject(
 
     return { success: true, message: 'Project submitted successfully!', submissionId };
   } catch (error) {
-    console.error('Error submitting project to Firestore/Storage:', error);
+    console.error('Error submitting project to Firestore:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
     return { success: false, message: `Failed to submit project: ${errorMessage}` };
   }
@@ -109,7 +110,6 @@ export async function submitProject(
 export async function getProjects(): Promise<ProjectSubmission[]> {
   try {
     const submissionsCollectionRef = collection(db, 'submissions');
-    // Order by 'submittedAt' in descending order (newest first)
     const q = query(submissionsCollectionRef, orderBy('submittedAt', 'desc'));
     const querySnapshot = await getDocs(q);
     
@@ -130,29 +130,7 @@ export async function getProjects(): Promise<ProjectSubmission[]> {
 export async function deleteProject(id: string): Promise<{ success: boolean; message: string }> {
   try {
     const projectDocRef = doc(db, 'submissions', id);
-    const docSnap = await getDoc(projectDocRef);
-
-    if (docSnap.exists()) {
-      const projectData = fromFirestoreDoc(docSnap.id, docSnap.data());
-      if (projectData && projectData.files && projectData.files.length > 0) {
-        for (const file of projectData.files) {
-          if (file.url) {
-            try {
-              const fileStorageRef = storageRef(storage, file.url);
-              await deleteObject(fileStorageRef);
-              console.log(`Deleted file from storage: ${file.name}`);
-            } catch (storageError: any) {
-              if (storageError.code === 'storage/object-not-found') {
-                  console.warn(`File not found in storage (may have been already deleted): ${file.name}`);
-              } else {
-                  console.error(`Error deleting file ${file.name} from storage:`, storageError);
-              }
-            }
-          }
-        }
-      }
-    }
-
+    // No need to delete from Firebase Storage as files are in Firestore
     await deleteDoc(projectDocRef);
     console.log(`Deleted submission with ID from Firestore: ${id}`);
     return { success: true, message: 'Submission deleted successfully.' };
@@ -165,10 +143,18 @@ export async function deleteProject(id: string): Promise<{ success: boolean; mes
 async function updateProjectStatus(id: string, statusUpdate: Partial<ProjectSubmission>): Promise<{ success: boolean; message: string }> {
    try {
     const submissionDocRef = doc(db, 'submissions', id);
-    const updates = {
+    const updates: DocumentData = { // Use DocumentData for updates
       ...statusUpdate,
       updatedAt: firestoreServerTimestamp(),
     };
+     // Ensure 'file' is not accidentally set to undefined if not part of statusUpdate
+    if (statusUpdate.file === undefined && 'file' in statusUpdate) {
+        // This case should not happen with current status updates but is a safeguard
+    } else if (statusUpdate.file) {
+        updates.file = statusUpdate.file;
+    }
+
+
     await updateDoc(submissionDocRef, updates);
     
     const docSnap = await getDoc(submissionDocRef);
@@ -189,7 +175,8 @@ async function updateProjectStatus(id: string, statusUpdate: Partial<ProjectSubm
     return { success: true, message: `Project ${statusUpdate.status || 'status'} updated successfully.` };
   } catch (error) {
     console.error(`Error updating project ${id} in Firestore:`, error);
-    return { success: false, message: 'Failed to update project status.' };
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+    return { success: false, message: `Failed to update project status: ${errorMessage}` };
   }
 }
 
@@ -223,4 +210,3 @@ export async function rejectProject(id: string, reason: string): Promise<{ succe
     acceptanceConditions: undefined 
   });
 }
-

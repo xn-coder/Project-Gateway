@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as _React from 'react';
@@ -20,7 +21,7 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Trash2, Eye, FileText, CheckCircle, XCircle, AlertTriangle, ThumbsUp } from 'lucide-react';
+import { MoreHorizontal, Trash2, Eye, FileText, CheckCircle, XCircle, AlertTriangle, ThumbsUp, Download } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import {
   AlertDialog,
@@ -36,7 +37,7 @@ import { useToast } from '@/hooks/use-toast';
 import { deleteProject, acceptProject, acceptProjectWithConditions, rejectProject } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input'; // Although not used directly, Textarea might rely on it or common styles.
+// import { Input } from '@/components/ui/input'; // Not directly used now
 
 interface SubmissionsTableProps {
   submissions: ProjectSubmission[];
@@ -175,6 +176,15 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
     }
   };
 
+  const handleDownloadFile = (fileData: { name: string; content: string; type: string }) => {
+    const link = document.createElement('a');
+    link.href = fileData.content; // Data URI
+    link.download = fileData.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
 
   return (
     <>
@@ -186,7 +196,7 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
               <TableHead className="hidden md:table-cell">Client Name</TableHead>
               <TableHead className="hidden lg:table-cell">Email</TableHead>
               <TableHead className="hidden sm:table-cell">Submitted</TableHead>
-              <TableHead className="text-center">Files</TableHead>
+              <TableHead className="text-center">File</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -215,8 +225,8 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                     {submission.submittedAt ? format(parseISO(submission.submittedAt), 'PPp') : 'N/A'}
                   </TableCell>
                   <TableCell className="text-center">
-                    {submission.files && submission.files.length > 0 ? (
-                       <Badge variant="secondary">{submission.files.length}</Badge>
+                    {submission.file ? (
+                       <Badge variant="secondary">1</Badge>
                     ) : (
                        <Badge variant="outline">0</Badge>
                     )}
@@ -306,19 +316,25 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                 <h4 className="font-semibold">Project Description</h4>
                 <p className="whitespace-pre-wrap text-sm">{selectedSubmission.projectDescription}</p>
               </div>
-              {selectedSubmission.files && selectedSubmission.files.length > 0 && (
+              {selectedSubmission.file && (
                 <div>
-                  <h4 className="font-semibold">Attached Files ({selectedSubmission.files.length})</h4>
-                  <ul className="list-none space-y-1 mt-1">
-                    {selectedSubmission.files.map((file, index) => (
-                      <li key={index} className="flex items-center text-sm p-2 border rounded-md bg-secondary/30">
-                        <FileText className="h-4 w-4 mr-2 shrink-0 text-secondary-foreground" />
-                        <span className="truncate" title={file.name}>{file.name}</span>
-                        <span className="ml-auto text-xs text-muted-foreground">({(file.size / 1024).toFixed(1)} KB)</span>
-                        {/* In a real app, you might add a download link here if files are stored in Firebase Storage */}
-                      </li>
-                    ))}
-                  </ul>
+                  <h4 className="font-semibold">Attached File</h4>
+                  <div className="flex items-center justify-between text-sm p-2 border rounded-md bg-secondary/30 mt-1">
+                    <div className="flex items-center space-x-2">
+                      <FileText className="h-4 w-4 shrink-0 text-secondary-foreground" />
+                      <span className="truncate" title={selectedSubmission.file.name}>{selectedSubmission.file.name}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">({(selectedSubmission.file.size / 1024).toFixed(1)} KB)</span>
+                    </div>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => selectedSubmission.file && handleDownloadFile(selectedSubmission.file)}
+                        className="ml-2"
+                        title={`Download ${selectedSubmission.file.name}`}
+                    >
+                        <Download className="h-3 w-3 mr-1" /> Download
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
