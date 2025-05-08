@@ -18,6 +18,14 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    serverActions: {
+      // Allow up to 10MB for file uploads (adjust as needed)
+      // This should be more than MAX_FILE_SIZE in schemas.ts * max number of files (5MB * 5 = 25MB)
+      // Body parser limits are in bytes or string units (e.g. '10mb')
+      bodySizeLimit: '30mb',
+    },
+  },
 };
 
 export default nextConfig;
