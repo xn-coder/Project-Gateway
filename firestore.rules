@@ -1,0 +1,19 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read and write access to the 'submissions' collection for development.
+    // WARNING: This is insecure for production. You should restrict access
+    // based on authentication and user roles before deploying.
+    match /submissions/{submissionId} {
+      allow read, write: if true;
+    }
+
+    // Add other collection rules here if needed.
+    // For example, if you have a 'users' collection:
+    // match /users/{userId} {
+    //   allow read, write: if request.auth != null && request.auth.uid == userId;
+    // }
+  }
+}
