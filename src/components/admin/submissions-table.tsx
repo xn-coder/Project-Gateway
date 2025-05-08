@@ -298,13 +298,13 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
           {selectedSubmission && (
             <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
                <div>
-                <h4 className="font-semibold">Status</h4>
-                <p><Badge variant={getStatusBadgeVariant(selectedSubmission.status)} className={selectedSubmission.status === 'acceptedWithConditions' ? 'bg-amber-500 text-white hover:bg-amber-600' : ''}>{formatStatusText(selectedSubmission.status)}</Badge></p>
+                <h4 className="font-semibold mb-1">Status</h4>
+                <div><Badge variant={getStatusBadgeVariant(selectedSubmission.status)} className={selectedSubmission.status === 'acceptedWithConditions' ? 'bg-amber-500 text-white hover:bg-amber-600' : ''}>{formatStatusText(selectedSubmission.status)}</Badge></div>
                 {selectedSubmission.status === 'acceptedWithConditions' && selectedSubmission.acceptanceConditions && (
-                  <p className="text-sm mt-1"><strong>Conditions:</strong> {selectedSubmission.acceptanceConditions}</p>
+                  <p className="text-sm mt-2"><strong>Conditions:</strong> {selectedSubmission.acceptanceConditions}</p>
                 )}
                 {selectedSubmission.status === 'rejected' && selectedSubmission.rejectionReason && (
-                  <p className="text-sm mt-1"><strong>Reason for Rejection:</strong> {selectedSubmission.rejectionReason}</p>
+                  <p className="text-sm mt-2"><strong>Reason for Rejection:</strong> {selectedSubmission.rejectionReason}</p>
                 )}
               </div>
               <div>
@@ -320,7 +320,7 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                 <div>
                   <h4 className="font-semibold">Attached File</h4>
                   <div className="flex items-center justify-between text-sm p-2 border rounded-md bg-secondary/30 mt-1">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 overflow-hidden">
                       <FileText className="h-4 w-4 shrink-0 text-secondary-foreground" />
                       <span className="truncate" title={selectedSubmission.file.name}>{selectedSubmission.file.name}</span>
                       <span className="ml-auto text-xs text-muted-foreground">({(selectedSubmission.file.size / 1024).toFixed(1)} KB)</span>
