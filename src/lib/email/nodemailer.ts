@@ -1,3 +1,4 @@
+
 'use server';
 
 import type { SubmissionStatus } from '@/types';
@@ -24,7 +25,7 @@ interface EmailOptions {
 // SMTP_PORT=465
 // SMTP_USER=your.email@gmail.com
 // SMTP_PASS=your_generated_app_password
-// EMAIL_FROM="Your App Name <your.email@gmail.com>"
+// EMAIL_FROM="Your App Name <your.email@gmail.com>" // Make sure this matches SMTP_USER for Gmail
 // SMTP_SECURE=true
 //
 // Example .env.local for Gmail (TLS):
@@ -32,16 +33,16 @@ interface EmailOptions {
 // SMTP_PORT=587
 // SMTP_USER=your.email@gmail.com
 // SMTP_PASS=your_generated_app_password
-// EMAIL_FROM="Your App Name <your.email@gmail.com>"
+// EMAIL_FROM="Your App Name <your.email@gmail.com>" // Make sure this matches SMTP_USER for Gmail
 // SMTP_SECURE=false
 //
 // --- General SMTP Configuration ---
 const smtpHost = process.env.SMTP_HOST;
-const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587; // Defaults to 587 (TLS)
+const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587; 
 const smtpUser = process.env.SMTP_USER;
 const smtpPass = process.env.SMTP_PASS;
-const emailFrom = process.env.EMAIL_FROM; // e.g., "Project Gateway <noreply@example.com>"
-const smtpSecure = process.env.SMTP_SECURE === 'true'; // `true` for port 465 (SSL), `false` for port 587 (TLS)
+const emailFrom = process.env.EMAIL_FROM; 
+const smtpSecure = process.env.SMTP_SECURE === 'true'; 
 
 if (!smtpHost || !smtpUser || !smtpPass || !emailFrom) {
   console.warn(
@@ -57,9 +58,9 @@ const transporter = nodemailer.createTransport({
     user: smtpUser,
     pass: smtpPass,
   },
-  // For Gmail, if you encounter issues, you might need to configure service: 'gmail'
-  // However, providing host, port, secure, and auth is generally preferred for flexibility.
-  // service: (smtpHost === 'smtp.gmail.com' && smtpUser && smtpPass) ? 'gmail' : undefined, 
+  // For Gmail, if `service: 'gmail'` is used, host/port/secure might be ignored.
+  // It's often better to explicitly define them.
+  // service: (smtpHost === 'smtp.gmail.com' && smtpUser && smtpPass && smtpUser.endsWith('@gmail.com')) ? 'gmail' : undefined,
 });
 
 export async function sendEmail({ to, subject, text, html }: EmailOptions): Promise<void> {
@@ -71,7 +72,7 @@ export async function sendEmail({ to, subject, text, html }: EmailOptions): Prom
   }
 
   const mailOptions = {
-    from: emailFrom,
+    from: emailFrom, // Use the configured EMAIL_FROM
     to,
     subject,
     text,
@@ -83,95 +84,177 @@ export async function sendEmail({ to, subject, text, html }: EmailOptions): Prom
     console.log(`Email sent successfully to ${to} with subject "${subject}"`);
   } catch (error) {
     console.error(`Error sending email to ${to}:`, error);
-    // Consider how you want to handle email sending failures.
-    // For critical notifications, you might want to implement retries or alert an admin.
-    // throw new Error('Failed to send email'); 
+    throw new Error(`Failed to send email: ${(error as Error).message}`); 
   }
 }
 
-// Email template helper (basic example)
+// Shared styles and structure for emails
+const emailStyles = `
+  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333333; margin: 0; padding: 0; background-color: #f4f4f4; }
+  .container { max-width: 600px; margin: 20px auto; padding: 20px; background-color: #ffffff; border: 1px solid #dddddd; border-radius: 5px; }
+  .header { background-color: #007bff; color: #ffffff; padding: 10px 20px; text-align: center; border-top-left-radius: 5px; border-top-right-radius: 5px; }
+  .header h1 { margin: 0; font-size: 24px; }
+  .content { padding: 20px; text-align: left; }
+  .content p { margin-bottom: 15px; }
+  .content strong { color: #0056b3; }
+  .footer { text-align: center; padding: 15px; font-size: 12px; color: #777777; border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; background-color: #f9f9f9;}
+  .button { display: inline-block; background-color: #28a745; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; }
+  .details-block { background-color: #f9f9f9; border: 1px solid #eeeeee; padding: 15px; margin-top: 15px; border-radius: 4px; }
+  .details-block p { margin-bottom: 8px; }
+`;
+
+const generateHtmlTemplate = (title: string, bodyContent: string, appName: string = "Project Gateway") => `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>${emailStyles}</style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>${appName}</h1>
+      </div>
+      <div class="content">
+        ${bodyContent}
+      </div>
+      <div class="footer">
+        <p>&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+  </html>
+`;
+
+// Email template helper for client submission confirmation
 export async function generateProjectSubmissionClientEmail(projectName: string, clientName: string, submissionId: string): Promise<{ subject: string; html: string; text: string }> {
   const subject = `Your Project "${projectName}" Has Been Submitted`;
-  const html = `
+  
+  const htmlBodyContent = `
     <p>Dear ${clientName},</p>
     <p>Thank you for submitting your project "<strong>${projectName}</strong>". We have received your details and will review them shortly.</p>
-    <p>Your Submission ID is: <strong>${submissionId}</strong>.</p>
+    <div class="details-block">
+      <p><strong>Submission ID:</strong> ${submissionId}</p>
+    </div>
     <p>You will be notified once there's an update on your submission status.</p>
     <p>Best regards,<br/>The Project Gateway Team</p>
   `;
-  const text = `Dear ${clientName},\n\nThank you for submitting your project "${projectName}". We have received your details and will review them shortly.\nYour Submission ID is: ${submissionId}.\nYou will be notified once there's an update on your submission status.\n\nBest regards,\nThe Project Gateway Team`;
+  const html = generateHtmlTemplate(subject, htmlBodyContent);
+
+  const text = `
+Dear ${clientName},
+
+Thank you for submitting your project "${projectName}". We have received your details and will review them shortly.
+
+Submission ID: ${submissionId}
+
+You will be notified once there's an update on your submission status.
+
+Best regards,
+The Project Gateway Team
+
+© ${new Date().getFullYear()} Project Gateway. All rights reserved.
+  `.trim();
   return { subject, html, text };
 }
 
+// Email template for admin notification of new submission
 export async function generateNewSubmissionAdminEmail(projectName: string, clientName: string, clientEmail: string, submissionId: string): Promise<{ subject: string; html: string; text: string }> {
   const subject = `New Project Submission: "${projectName}"`;
   const adminDashboardLink = process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/admin` : "the admin dashboard";
-  const html = `
+  
+  const htmlBodyContent = `
     <p>A new project "<strong>${projectName}</strong>" has been submitted.</p>
-    <p><strong>Client Name:</strong> ${clientName}</p>
-    <p><strong>Client Email:</strong> ${clientEmail}</p>
-    <p><strong>Submission ID:</strong> ${submissionId}</p>
-    <p>Please review it in ${adminDashboardLink}.</p>
+    <div class="details-block">
+      <p><strong>Client Name:</strong> ${clientName}</p>
+      <p><strong>Client Email:</strong> ${clientEmail}</p>
+      <p><strong>Submission ID:</strong> ${submissionId}</p>
+    </div>
+    <p>Please review it in <a href="${adminDashboardLink}" class="button" style="color: #ffffff; text-decoration: none;">Admin Dashboard</a>.</p>
   `;
-  const text = `A new project "${projectName}" has been submitted.\n\nClient Name: ${clientName}\nClient Email: ${clientEmail}\nSubmission ID: ${submissionId}\n\nPlease review it in ${adminDashboardLink}.`;
+  const html = generateHtmlTemplate(subject, htmlBodyContent, "Project Gateway Admin");
+
+  const text = `
+A new project "${projectName}" has been submitted.
+
+Client Name: ${clientName}
+Client Email: ${clientEmail}
+Submission ID: ${submissionId}
+
+Please review it in the admin dashboard: ${adminDashboardLink}
+
+© ${new Date().getFullYear()} Project Gateway Admin. All rights reserved.
+  `.trim();
   return { subject, html, text };
 }
 
+// Email template for status updates to client
 export async function generateStatusUpdateEmail(
   projectName: string,
   clientName: string,
   status: SubmissionStatus,
-  details?: string // This will be acceptanceConditions or rejectionReason
+  details?: string 
 ): Promise<{ subject: string; html: string; text: string }> {
-  let subject = '';
-  let htmlBody = '';
-  let textBody = '';
+  let emailSubject = '';
+  let htmlBodyMain = '';
+  let textBodyMain = '';
 
   switch (status) {
     case 'accepted':
-      subject = `Congratulations! Your project "${projectName}" has been accepted!`;
-      htmlBody = `
+      emailSubject = `Congratulations! Your project "${projectName}" has been accepted!`;
+      htmlBodyMain = `
         <p>Dear ${clientName},</p>
         <p>We are pleased to inform you that your project "<strong>${projectName}</strong>" has been accepted.</p>
         <p>We will be in touch shortly with the next steps.</p>
       `;
-      textBody = `Dear ${clientName},\n\nWe are pleased to inform you that your project "${projectName}" has been accepted.\nWe will be in touch shortly with the next steps.`;
+      textBodyMain = `Dear ${clientName},\n\nWe are pleased to inform you that your project "${projectName}" has been accepted.\nWe will be in touch shortly with the next steps.`;
       break;
     case 'acceptedWithConditions':
-      subject = `Your project "${projectName}" has been accepted with conditions`;
-      htmlBody = `
+      emailSubject = `Your project "${projectName}" has been accepted with conditions`;
+      htmlBodyMain = `
         <p>Dear ${clientName},</p>
         <p>Your project "<strong>${projectName}</strong>" has been accepted with the following conditions:</p>
-        <p><em>${details || 'Please contact us for details.'}</em></p>
+        <div class="details-block">
+          <p><em>${details || 'Please contact us for details.'}</em></p>
+        </div>
         <p>Please review these conditions. We will contact you to discuss them further.</p>
       `;
-      textBody = `Dear ${clientName},\n\nYour project "${projectName}" has been accepted with the following conditions:\n\n${details || 'Please contact us for details.'}\n\nPlease review these conditions. We will contact you to discuss them further.`;
+      textBodyMain = `Dear ${clientName},\n\nYour project "${projectName}" has been accepted with the following conditions:\n\n${details || 'Please contact us for details.'}\n\nPlease review these conditions. We will contact you to discuss them further.`;
       break;
     case 'rejected':
-      subject = `Update on your project submission: "${projectName}"`;
-      htmlBody = `
+      emailSubject = `Update on your project submission: "${projectName}"`;
+      htmlBodyMain = `
         <p>Dear ${clientName},</p>
         <p>We regret to inform you that after careful consideration, your project "<strong>${projectName}</strong>" has been rejected.</p>
-        ${details ? `<p><strong>Reason:</strong> ${details}</p>` : '<p>If you have questions, please contact us.</p>'}
+        ${details ? `<div class="details-block"><p><strong>Reason:</strong> ${details}</p></div>` : ''}
         <p>If you would like to discuss this further or have any questions, please feel free to contact us.</p>
       `;
-      textBody = `Dear ${clientName},\n\nWe regret to inform you that after careful consideration, your project "${projectName}" has been rejected.\n\n${details ? `Reason: ${details}\n\n` : 'If you have questions, please contact us.\n\n'}If you would like to discuss this further or have any questions, please feel free to contact us.`;
+      textBodyMain = `Dear ${clientName},\n\nWe regret to inform you that after careful consideration, your project "${projectName}" has been rejected.\n\n${details ? `Reason: ${details}\n\n` : ''}If you would like to discuss this further or have any questions, please feel free to contact us.`;
       break;
-    // 'pending' status updates are typically not emailed to clients, but handled internally.
-    // If other statuses are added, they can be handled here.
     default:
-      // This case should ideally not be reached if 'status' is strictly SubmissionStatus
-      // and client-facing emails are only for terminal or conditional statuses.
       console.warn(`generateStatusUpdateEmail called with unhandled status: ${status} for project ${projectName}`);
-      subject = `Update on your project: "${projectName}"`;
-      htmlBody = `<p>Dear ${clientName},</p><p>There's an update on your project "<strong>${projectName}</strong>". The status is now: ${status}. Please contact us for more details if necessary.</p>`;
-      textBody = `Dear ${clientName},\n\nThere's an update on your project "${projectName}". The status is now: ${status}.\nPlease contact us for more details if necessary.`;
+      emailSubject = `Update on your project: "${projectName}"`;
+      htmlBodyMain = `<p>Dear ${clientName},</p><p>There's an update on your project "<strong>${projectName}</strong>". The status is now: <strong>${status}</strong>. Please contact us for more details if necessary.</p>`;
+      textBodyMain = `Dear ${clientName},\n\nThere's an update on your project "${projectName}". The status is now: ${status}.\nPlease contact us for more details if necessary.`;
       break;
   }
 
-  const html = `${htmlBody}<p>Best regards,<br/>The Project Gateway Team</p>`;
-  const text = `${textBody}\n\nBest regards,\nThe Project Gateway Team`;
+  const htmlBodyContent = `
+    ${htmlBodyMain}
+    <p>Best regards,<br/>The Project Gateway Team</p>
+  `;
+  const html = generateHtmlTemplate(emailSubject, htmlBodyContent);
 
-  return { subject, html, text };
+  const text = `
+${textBodyMain}
+
+Best regards,
+The Project Gateway Team
+
+© ${new Date().getFullYear()} Project Gateway. All rights reserved.
+  `.trim();
+
+  return { subject: emailSubject, html, text };
 }
-
