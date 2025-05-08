@@ -1,8 +1,8 @@
 "use client";
 
-import * as _React from 'react'; // Workaround for "React refers to a UMD global"
+import { useState, type ChangeEvent } from 'react'; // Combined React imports
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,8 +25,8 @@ import { ScrollArea } from './ui/scroll-area';
 
 export function SubmissionForm() {
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = _React.useState(false);
-  const [selectedFiles, setSelectedFiles] = _React.useState<File[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const form = useForm<SubmissionFormData>({
     resolver: zodResolver(submissionSchema),
@@ -40,7 +40,7 @@ export function SubmissionForm() {
     },
   });
 
-  const handleFileChange = (event: _React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
       const newFiles = Array.from(event.target.files);
       const allFiles = [...selectedFiles, ...newFiles].slice(0, 5); // Max 5 files

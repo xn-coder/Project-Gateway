@@ -2,40 +2,43 @@
 
 import type { ProjectSubmission } from '@/types';
 import { submissionSchema, type SubmissionFormData } from '@/lib/schemas';
+import { db } from '@/lib/firebase/config';
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  Timestamp,
+  query,
+  orderBy,
+  serverTimestamp,
+  getDoc
+} from 'firebase/firestore';
 
-// In-memory store for submissions (replace with a database in a real app)
-let submissions: ProjectSubmission[] = [
-  {
-    id: '1',
-    name: 'Alice Wonderland',
-    email: 'alice@example.com',
-    projectTitle: 'E-commerce Platform Redesign',
-    projectDescription: 'Looking to redesign our existing e-commerce platform for better user experience and mobile responsiveness. Key features include improved search, streamlined checkout, and new product showcase pages.',
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
-    files: [{ name: 'brief.pdf', size: 1024*200, type: 'application/pdf' }],
-    status: 'pending',
-  },
-  {
-    id: '2',
-    name: 'Bob The Builder',
-    email: 'bob@example.com',
-    phone: '+1234567890',
-    projectTitle: 'Mobile App Development',
-    projectDescription: 'Need a cross-platform mobile app for task management. Should have features like task creation, assignment, deadlines, and notifications. We have detailed mockups ready.',
-    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
-    status: 'pending',
-  },
-  {
-    id: '3',
-    name: 'Charlie Brown',
-    email: 'charlie@example.com',
-    projectTitle: 'Content Management System',
-    projectDescription: 'We require a custom CMS for our blog. Needs to be SEO friendly and allow multiple authors with different roles. Integration with social media is also important.',
-    submittedAt: new Date().toISOString(),
-    files: [{ name: 'requirements.docx', size: 1024*50, type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, {name: 'logo-draft.png', size: 1024*150, type: 'image/png'}],
-    status: 'pending',
+// Helper to convert Firestore document data to ProjectSubmission type
+const fromFirestore = (docSnap: ReturnType<typeof getDoc<any>>): ProjectSubmission | null => {
+  if (!docSnap.exists()) {
+    return null;
   }
-];
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    name: data.name,
+    email: data.email,
+    phone: data.phone || undefined,
+    projectTitle: data.projectTitle,
+    projectDescription: data.projectDescription,
+    files: data.files || [],
+    // Convert Firestore Timestamp to ISO string
+    submittedAt: (data.submittedAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
+    status: data.status,
+    acceptanceConditions: data.acceptanceConditions || undefined,
+    rejectionReason: data.rejectionReason || undefined,
+  };
+};
+
 
 export async function submitProject(
   data: SubmissionFormData
@@ -43,104 +46,141 @@ export async function submitProject(
   const validationResult = submissionSchema.safeParse(data);
 
   if (!validationResult.success) {
-    // Simplified error message. In a real app, you might return detailed errors.
     return { success: false, message: 'Invalid data. Please check the form.' };
   }
 
-  const newSubmission: ProjectSubmission = {
-    id: Date.now().toString(), // Simple ID generation
-    ...validationResult.data,
-    files: data.files?.map(file => ({ name: file.name, size: file.size, type: file.type })), // Store file metadata
-    submittedAt: new Date().toISOString(),
-    status: 'pending', // New submissions are pending by default
-  };
+  try {
+    const submissionData = {
+      ...validationResult.data,
+      files: data.files?.map(file => ({ name: file.name, size: file.size, type: file.type })) || [],
+      submittedAt: serverTimestamp(), // Use server timestamp
+      status: 'pending',
+    };
 
-  // Simulate saving to database
-  submissions.unshift(newSubmission); // Add to the beginning of the array
+    const docRef = await addDoc(collection(db, 'submissions'), submissionData);
 
-  console.log('New Submission:', newSubmission);
-  console.log('Simulating email notification to owner about new submission...');
-  console.log('Subject: New Project Submission - ' + newSubmission.projectTitle);
-  console.log('From: ' + newSubmission.name + ' <' + newSubmission.email + '>');
-  console.log('Phone: ' + (newSubmission.phone || 'N/A'));
-  console.log('Description: ' + newSubmission.projectDescription);
-  if (newSubmission.files && newSubmission.files.length > 0) {
-    console.log('Files: ' + newSubmission.files.map(f => `${f.name} (${(f.size / 1024).toFixed(2)} KB)`).join(', '));
+    console.log('New Submission ID:', docRef.id);
+    // Simulate email notification (can be replaced with actual email service)
+    console.log('Simulating email notification to owner about new submission...');
+    console.log('Subject: New Project Submission - ' + submissionData.projectTitle);
+    // ... (rest of the email simulation logs)
+
+    return { success: true, message: 'Project submitted successfully!', submissionId: docRef.id };
+  } catch (error) {
+    console.error('Error submitting project to Firestore:', error);
+    return { success: false, message: 'Failed to submit project. Please try again.' };
   }
-  console.log('Submitted At: ' + new Date(newSubmission.submittedAt).toLocaleString());
-
-
-  // Simulate file handling (e.g., upload to cloud storage)
-  if (data.files && data.files.length > 0) {
-    console.log(`Simulating upload for ${data.files.length} file(s):`);
-    data.files.forEach(file => {
-      console.log(` - ${file.name} (${file.type}, ${file.size} bytes)`);
-    });
-  }
-
-
-  return { success: true, message: 'Project submitted successfully!', submissionId: newSubmission.id };
 }
 
 export async function getProjects(): Promise<ProjectSubmission[]> {
-  // Simulate fetching from database
-  return Promise.resolve(submissions.map(s => ({...s}))); // Return copies
+  try {
+    const submissionsCollection = collection(db, 'submissions');
+    // Order by 'submittedAt' in descending order (newest first)
+    const q = query(submissionsCollection, orderBy('submittedAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    const projects = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        name: data.name,
+        email: data.email,
+        phone: data.phone || undefined,
+        projectTitle: data.projectTitle,
+        projectDescription: data.projectDescription,
+        files: data.files || [],
+        submittedAt: (data.submittedAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
+        status: data.status,
+        acceptanceConditions: data.acceptanceConditions || undefined,
+        rejectionReason: data.rejectionReason || undefined,
+      } as ProjectSubmission;
+    });
+    return projects;
+  } catch (error) {
+    console.error('Error fetching projects from Firestore:', error);
+    return []; // Return empty array on error
+  }
 }
 
 export async function deleteProject(id: string): Promise<{ success: boolean; message: string }> {
-  const initialLength = submissions.length;
-  submissions = submissions.filter(submission => submission.id !== id);
-  
-  if (submissions.length < initialLength) {
+  try {
+    await deleteDoc(doc(db, 'submissions', id));
     console.log(`Deleted submission with ID: ${id}`);
     return { success: true, message: 'Submission deleted successfully.' };
-  } else {
-    console.log(`Failed to delete submission with ID: ${id}. Not found.`);
-    return { success: false, message: 'Submission not found.' };
+  } catch (error) {
+    console.error(`Error deleting submission ${id}:`, error);
+    return { success: false, message: 'Failed to delete submission.' };
   }
 }
 
 export async function acceptProject(id: string): Promise<{ success: boolean; message: string }> {
-  const submission = submissions.find(s => s.id === id);
-  if (!submission) {
-    return { success: false, message: 'Submission not found.' };
+  try {
+    const submissionRef = doc(db, 'submissions', id);
+    await updateDoc(submissionRef, {
+      status: 'accepted',
+      acceptanceConditions: null, // Explicitly nullify if it was set
+      rejectionReason: null,      // Explicitly nullify if it was set
+      updatedAt: serverTimestamp(),
+    });
+    // Simulate email
+    const submissionSnap = await getDoc(submissionRef);
+    const submissionData = fromFirestore(submissionSnap);
+    if (submissionData) {
+        console.log(`Simulating email to client ${submissionData.email}: Your project "${submissionData.projectTitle}" has been accepted.`);
+    }
+    return { success: true, message: 'Project accepted successfully.' };
+  } catch (error) {
+    console.error(`Error accepting project ${id}:`, error);
+    return { success: false, message: 'Failed to accept project.' };
   }
-  submission.status = 'accepted';
-  submission.acceptanceConditions = undefined;
-  submission.rejectionReason = undefined;
-  
-  console.log(`Simulating email to client ${submission.email}: Your project "${submission.projectTitle}" has been accepted.`);
-  return { success: true, message: 'Project accepted successfully.' };
 }
 
 export async function acceptProjectWithConditions(id: string, conditions: string): Promise<{ success: boolean; message: string }> {
   if (!conditions || conditions.trim() === "") {
     return { success: false, message: 'Conditions cannot be empty.' };
   }
-  const submission = submissions.find(s => s.id === id);
-  if (!submission) {
-    return { success: false, message: 'Submission not found.' };
+  try {
+    const submissionRef = doc(db, 'submissions', id);
+    await updateDoc(submissionRef, {
+      status: 'acceptedWithConditions',
+      acceptanceConditions: conditions,
+      rejectionReason: null, // Explicitly nullify
+      updatedAt: serverTimestamp(),
+    });
+    // Simulate email
+    const submissionSnap = await getDoc(submissionRef);
+    const submissionData = fromFirestore(submissionSnap);
+    if (submissionData) {
+     console.log(`Simulating email to client ${submissionData.email}: Your project "${submissionData.projectTitle}" has been accepted with the following conditions: ${conditions}`);
+    }
+    return { success: true, message: 'Project accepted with conditions successfully.' };
+  } catch (error) {
+    console.error(`Error accepting project ${id} with conditions:`, error);
+    return { success: false, message: 'Failed to accept project with conditions.' };
   }
-  submission.status = 'acceptedWithConditions';
-  submission.acceptanceConditions = conditions;
-  submission.rejectionReason = undefined;
-
-  console.log(`Simulating email to client ${submission.email}: Your project "${submission.projectTitle}" has been accepted with the following conditions: ${conditions}`);
-  return { success: true, message: 'Project accepted with conditions successfully.' };
 }
 
 export async function rejectProject(id: string, reason: string): Promise<{ success: boolean; message: string }> {
   if (!reason || reason.trim() === "") {
     return { success: false, message: 'Reason cannot be empty.' };
   }
-  const submission = submissions.find(s => s.id === id);
-  if (!submission) {
-    return { success: false, message: 'Submission not found.' };
+  try {
+    const submissionRef = doc(db, 'submissions', id);
+    await updateDoc(submissionRef, {
+      status: 'rejected',
+      rejectionReason: reason,
+      acceptanceConditions: null, // Explicitly nullify
+      updatedAt: serverTimestamp(),
+    });
+     // Simulate email
+    const submissionSnap = await getDoc(submissionRef);
+    const submissionData = fromFirestore(submissionSnap);
+    if (submissionData) {
+      console.log(`Simulating email to client ${submissionData.email}: Your project "${submissionData.projectTitle}" has been rejected. Reason: ${reason}`);
+    }
+    return { success: true, message: 'Project rejected successfully.' };
+  } catch (error) {
+    console.error(`Error rejecting project ${id}:`, error);
+    return { success: false, message: 'Failed to reject project.' };
   }
-  submission.status = 'rejected';
-  submission.rejectionReason = reason;
-  submission.acceptanceConditions = undefined;
-
-  console.log(`Simulating email to client ${submission.email}: Your project "${submission.projectTitle}" has been rejected. Reason: ${reason}`);
-  return { success: true, message: 'Project rejected successfully.' };
 }

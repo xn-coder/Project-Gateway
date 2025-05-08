@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as _React from 'react';
@@ -47,9 +46,9 @@ interface SubmissionsTableProps {
 const getStatusBadgeVariant = (status: SubmissionStatus): 'default' | 'secondary' | 'destructive' | 'outline' => {
   switch (status) {
     case 'accepted':
-      return 'default'; // Default often maps to primary, which is teal - good for accepted
+      return 'default'; 
     case 'acceptedWithConditions':
-      return 'secondary'; // This is typically a muted gray, we can make it more like a warning
+      return 'secondary'; 
     case 'rejected':
       return 'destructive';
     case 'pending':
@@ -201,7 +200,11 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
               </TableRow>
             ) : (
               submissions.map((submission) => (
-                <TableRow key={submission.id}>
+                <TableRow 
+                  key={submission.id} 
+                  onClick={() => handleViewDetails(submission)}
+                  className="cursor-pointer"
+                >
                   <TableCell>
                     <div className="font-medium">{submission.projectTitle}</div>
                     <div className="text-xs text-muted-foreground md:hidden">{submission.name}</div>
@@ -209,7 +212,7 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                   <TableCell className="hidden md:table-cell">{submission.name}</TableCell>
                   <TableCell className="hidden lg:table-cell">{submission.email}</TableCell>
                   <TableCell className="hidden sm:table-cell">
-                    {format(parseISO(submission.submittedAt), 'PPp')}
+                    {submission.submittedAt ? format(parseISO(submission.submittedAt), 'PPp') : 'N/A'}
                   </TableCell>
                   <TableCell className="text-center">
                     {submission.files && submission.files.length > 0 ? (
@@ -219,11 +222,11 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={getStatusBadgeVariant(submission.status)} className={submission.status === 'acceptedWithConditions' ? 'bg-amber-500 text-white' : ''}>
+                    <Badge variant={getStatusBadgeVariant(submission.status)} className={submission.status === 'acceptedWithConditions' ? 'bg-amber-500 text-white hover:bg-amber-600' : ''}>
                       {formatStatusText(submission.status)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}> {/* Stop propagation to prevent row click when interacting with dropdown */}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8" disabled={isProcessing}>
@@ -233,30 +236,34 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleViewDetails(submission)}>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleViewDetails(submission); }}>
                           <Eye className="mr-2 h-4 w-4" /> View Details
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         {submission.status === 'pending' && (
                           <>
-                            <DropdownMenuItem onClick={() => handleAccept(submission)}>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleAccept(submission); }}>
                               <ThumbsUp className="mr-2 h-4 w-4" /> Accept
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openAcceptWithConditionsModal(submission)}>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openAcceptWithConditionsModal(submission); }}>
                               <AlertTriangle className="mr-2 h-4 w-4" /> Accept with Conditions
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openRejectWithReasonModal(submission)}>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openRejectWithReasonModal(submission); }}>
                               <XCircle className="mr-2 h-4 w-4" /> Reject with Reason
                             </DropdownMenuItem>
                           </>
                         )}
                          {(submission.status === 'accepted' || submission.status === 'acceptedWithConditions' || submission.status === 'rejected') && (
-                            <DropdownMenuItem onClick={() => openRejectWithReasonModal(submission)} className="text-destructive_text-amber-600">
-                                <XCircle className="mr-2 h-4 w-4" /> Update Rejection / Re-evaluate
+                            <DropdownMenuItem 
+                              onClick={(e) => { e.stopPropagation(); openRejectWithReasonModal(submission); }} 
+                              className={submission.status === 'rejected' ? "text-destructive" : "text-amber-600 dark:text-amber-500"}
+                            >
+                                <XCircle className="mr-2 h-4 w-4" /> 
+                                {submission.status === 'rejected' ? 'Update Rejection' : 'Re-evaluate / Reject'}
                             </DropdownMenuItem>
                          )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => openDeleteModal(submission)} className="text-destructive">
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openDeleteModal(submission); }} className="text-destructive">
                           <Trash2 className="mr-2 h-4 w-4" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -275,14 +282,14 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
           <AlertDialogHeader>
             <AlertDialogTitle>{selectedSubmission?.projectTitle}</AlertDialogTitle>
             <AlertDialogDescription>
-              Submitted by {selectedSubmission?.name} on {selectedSubmission && format(parseISO(selectedSubmission.submittedAt), 'PPP \'at\' p')}
+              Submitted by {selectedSubmission?.name} on {selectedSubmission?.submittedAt && format(parseISO(selectedSubmission.submittedAt), 'PPP \'at\' p')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {selectedSubmission && (
             <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
                <div>
                 <h4 className="font-semibold">Status</h4>
-                <p><Badge variant={getStatusBadgeVariant(selectedSubmission.status)} className={selectedSubmission.status === 'acceptedWithConditions' ? 'bg-amber-500 text-white' : ''}>{formatStatusText(selectedSubmission.status)}</Badge></p>
+                <p><Badge variant={getStatusBadgeVariant(selectedSubmission.status)} className={selectedSubmission.status === 'acceptedWithConditions' ? 'bg-amber-500 text-white hover:bg-amber-600' : ''}>{formatStatusText(selectedSubmission.status)}</Badge></p>
                 {selectedSubmission.status === 'acceptedWithConditions' && selectedSubmission.acceptanceConditions && (
                   <p className="text-sm mt-1"><strong>Conditions:</strong> {selectedSubmission.acceptanceConditions}</p>
                 )}
@@ -308,6 +315,7 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                         <FileText className="h-4 w-4 mr-2 shrink-0 text-secondary-foreground" />
                         <span className="truncate" title={file.name}>{file.name}</span>
                         <span className="ml-auto text-xs text-muted-foreground">({(file.size / 1024).toFixed(1)} KB)</span>
+                        {/* In a real app, you might add a download link here if files are stored in Firebase Storage */}
                       </li>
                     ))}
                   </ul>
