@@ -1,7 +1,7 @@
 
 'use server';
 
-import type { ProjectSubmission, ProjectSubmissionFile } from '@/types';
+import type { ProjectSubmission, ProjectSubmissionFile, SubmissionStatus } from '@/types';
 import { submissionSchema, type SubmissionFormData } from '@/lib/schemas';
 import { db } from '@/lib/firebase/config'; // db is Firestore
 import {
@@ -100,7 +100,7 @@ export async function submitProject(
     console.log('New Submission ID (Firestore):', submissionId);
     
     // Send email notification to client
-    const clientEmailContent = generateProjectSubmissionClientEmail(
+    const clientEmailContent = await generateProjectSubmissionClientEmail(
       submissionDataForFirestore.projectTitle,
       submissionDataForFirestore.name,
       submissionId
@@ -115,7 +115,7 @@ export async function submitProject(
     // Send email notification to admin
     const adminEmail = process.env.ADMIN_EMAIL || "admin@example.com"; // Use env var or fallback
     if (adminEmail) {
-      const adminEmailContent = generateNewSubmissionAdminEmail(
+      const adminEmailContent = await generateNewSubmissionAdminEmail(
         submissionDataForFirestore.projectTitle,
         submissionDataForFirestore.name,
         submissionDataForFirestore.email,
@@ -171,7 +171,8 @@ export async function deleteProject(id: string): Promise<{ success: boolean; mes
   }
 }
 
-type ProjectStatusUpdateData = Partial<Omit<ProjectSubmission, 'id' | 'submittedAt' | 'updatedAt'>> & {
+type ProjectStatusUpdateData = Partial<Omit<ProjectSubmission, 'id' | 'submittedAt' | 'updatedAt' | 'status'>> & {
+  status?: SubmissionStatus; 
   acceptanceConditions?: string | FieldValue;
   rejectionReason?: string | FieldValue;
 };
@@ -197,7 +198,7 @@ async function updateProjectStatus(id: string, statusUpdate: ProjectStatusUpdate
     const docSnap = await getDoc(submissionDocRef);
     if (docSnap.exists()) {
         const submissionData = fromFirestoreDoc(docSnap.id, docSnap.data());
-        if (submissionData) {
+        if (submissionData && submissionData.status) { // Ensure status is defined
             let emailDetails: string | undefined;
             if (submissionData.status === 'acceptedWithConditions') {
               emailDetails = submissionData.acceptanceConditions;
@@ -205,8 +206,9 @@ async function updateProjectStatus(id: string, statusUpdate: ProjectStatusUpdate
               emailDetails = submissionData.rejectionReason;
             }
 
+            // Only send email if it's a client-facing status update
             if (submissionData.status === 'accepted' || submissionData.status === 'acceptedWithConditions' || submissionData.status === 'rejected') {
-              const emailContent = generateStatusUpdateEmail(
+              const emailContent = await generateStatusUpdateEmail(
                 submissionData.projectTitle,
                 submissionData.name,
                 submissionData.status,

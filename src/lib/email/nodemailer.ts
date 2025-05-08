@@ -1,6 +1,7 @@
 
 'use server';
 
+import type { SubmissionStatus } from '@/types';
 import nodemailer from 'nodemailer';
 
 interface EmailOptions {
@@ -61,7 +62,7 @@ export async function sendEmail({ to, subject, text, html }: EmailOptions): Prom
 }
 
 // Email template helper (basic example)
-export function generateProjectSubmissionClientEmail(projectName: string, clientName: string, submissionId: string): { subject: string; html: string; text: string } {
+export async function generateProjectSubmissionClientEmail(projectName: string, clientName: string, submissionId: string): Promise<{ subject: string; html: string; text: string }> {
   const subject = `Your Project "${projectName}" Has Been Submitted`;
   const html = `
     <p>Dear ${clientName},</p>
@@ -74,7 +75,7 @@ export function generateProjectSubmissionClientEmail(projectName: string, client
   return { subject, html, text };
 }
 
-export function generateNewSubmissionAdminEmail(projectName: string, clientName: string, clientEmail: string, submissionId: string): { subject: string; html: string; text: string } {
+export async function generateNewSubmissionAdminEmail(projectName: string, clientName: string, clientEmail: string, submissionId: string): Promise<{ subject: string; html: string; text: string }> {
   const subject = `New Project Submission: "${projectName}"`;
   const html = `
     <p>A new project "<strong>${projectName}</strong>" has been submitted.</p>
@@ -87,12 +88,12 @@ export function generateNewSubmissionAdminEmail(projectName: string, clientName:
   return { subject, html, text };
 }
 
-export function generateStatusUpdateEmail(
+export async function generateStatusUpdateEmail(
   projectName: string,
   clientName: string,
-  status: 'accepted' | 'acceptedWithConditions' | 'rejected',
+  status: SubmissionStatus,
   details?: string // This will be acceptanceConditions or rejectionReason
-): { subject: string; html: string; text: string } {
+): Promise<{ subject: string; html: string; text: string }> {
   let subject = '';
   let htmlBody = '';
   let textBody = '';
@@ -127,6 +128,11 @@ export function generateStatusUpdateEmail(
       `;
       textBody = `Dear ${clientName},\n\nWe regret to inform you that after careful consideration, your project "${projectName}" has been rejected.\n\nReason: ${details || 'Not specified.'}\n\nIf you would like to discuss this further, please feel free to contact us.`;
       break;
+    default: // Should not happen with SubmissionStatus type, but good practice
+      subject = `Update on your project: "${projectName}"`;
+      htmlBody = `<p>Dear ${clientName},</p><p>There's an update on your project "<strong>${projectName}</strong>". Please contact us for details.</p>`;
+      textBody = `Dear ${clientName},\n\nThere's an update on your project "${projectName}". Please contact us for details.`;
+      break;
   }
 
   const html = `${htmlBody}<p>Best regards,<br/>The Project Gateway Team</p>`;
@@ -134,3 +140,4 @@ export function generateStatusUpdateEmail(
 
   return { subject, html, text };
 }
+
