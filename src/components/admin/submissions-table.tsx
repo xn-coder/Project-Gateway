@@ -2,7 +2,7 @@
 "use client";
 
 import * as _React from 'react';
-import type { ProjectSubmission, SubmissionStatus } from '@/types';
+import type { ProjectSubmission, SubmissionStatus, ProjectSubmissionFile } from '@/types';
 import {
   Table,
   TableBody,
@@ -176,7 +176,7 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
     }
   };
 
-  const handleDownloadFile = (fileData: { name: string; content: string; type: string }) => {
+  const handleDownloadFile = (fileData: ProjectSubmissionFile) => {
     const link = document.createElement('a');
     link.href = fileData.content; // Data URI
     link.download = fileData.name;
@@ -196,7 +196,7 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
               <TableHead className="hidden md:table-cell">Client Name</TableHead>
               <TableHead className="hidden lg:table-cell">Email</TableHead>
               <TableHead className="hidden sm:table-cell">Submitted</TableHead>
-              <TableHead className="text-center">File</TableHead>
+              <TableHead className="text-center">Files</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -225,8 +225,8 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                     {submission.submittedAt ? format(parseISO(submission.submittedAt), 'PPp') : 'N/A'}
                   </TableCell>
                   <TableCell className="text-center">
-                    {submission.file ? (
-                       <Badge variant="secondary">1</Badge>
+                    {submission.files && submission.files.length > 0 ? (
+                       <Badge variant="secondary">{submission.files.length}</Badge>
                     ) : (
                        <Badge variant="outline">0</Badge>
                     )}
@@ -316,24 +316,28 @@ export function SubmissionsTable({ submissions, onActionSuccess }: SubmissionsTa
                 <h4 className="font-semibold">Project Description</h4>
                 <p className="whitespace-pre-wrap text-sm">{selectedSubmission.projectDescription}</p>
               </div>
-              {selectedSubmission.file && (
+              {selectedSubmission.files && selectedSubmission.files.length > 0 && (
                 <div>
-                  <h4 className="font-semibold">Attached File</h4>
-                  <div className="flex items-center justify-between text-sm p-2 border rounded-md bg-secondary/30 mt-1">
-                    <div className="flex items-center space-x-2 overflow-hidden">
-                      <FileText className="h-4 w-4 shrink-0 text-secondary-foreground" />
-                      <span className="truncate" title={selectedSubmission.file.name}>{selectedSubmission.file.name}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">({(selectedSubmission.file.size / 1024).toFixed(1)} KB)</span>
-                    </div>
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => selectedSubmission.file && handleDownloadFile(selectedSubmission.file)}
-                        className="ml-2"
-                        title={`Download ${selectedSubmission.file.name}`}
-                    >
-                        <Download className="h-3 w-3 mr-1" /> Download
-                    </Button>
+                  <h4 className="font-semibold mb-2">Attached Files ({selectedSubmission.files.length})</h4>
+                  <div className="space-y-2">
+                    {selectedSubmission.files.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between text-sm p-2 border rounded-md bg-secondary/30">
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                          <FileText className="h-4 w-4 shrink-0 text-secondary-foreground" />
+                          <span className="truncate" title={file.name}>{file.name}</span>
+                          <span className="ml-auto text-xs text-muted-foreground">({(file.size / 1024).toFixed(1)} KB)</span>
+                        </div>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleDownloadFile(file)}
+                            className="ml-2"
+                            title={`Download ${file.name}`}
+                        >
+                            <Download className="h-3 w-3 mr-1" /> Download
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

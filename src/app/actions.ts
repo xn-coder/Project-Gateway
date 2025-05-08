@@ -1,14 +1,14 @@
 
 'use server';
 
-import type { ProjectSubmission } from '@/types';
+import type { ProjectSubmission, ProjectSubmissionFile } from '@/types';
 import { submissionSchema, type SubmissionFormData } from '@/lib/schemas';
 import { db } from '@/lib/firebase/config'; // db is Firestore
 import {
   collection,
   doc,
   setDoc,
-  addDoc,
+  // addDoc, // Not used
   getDoc,
   getDocs,
   updateDoc,
@@ -32,12 +32,12 @@ const fromFirestoreDoc = (id: string, data: DocumentData): ProjectSubmission | n
     phone: data.phone || undefined,
     projectTitle: data.projectTitle,
     projectDescription: data.projectDescription,
-    file: data.file ? { 
-      name: data.file.name, 
-      size: data.file.size, 
-      type: data.file.type, 
-      content: data.file.content 
-    } : undefined,
+    files: data.files ? (data.files as Array<any>).map(file => ({ // Ensure files is treated as an array
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      content: file.content
+    })) : undefined,
     submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate().toISOString() : (data.submittedAt || new Date().toISOString()),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
     status: data.status,
@@ -62,29 +62,34 @@ export async function submitProject(
     const newSubmissionRef = doc(collection(db, 'submissions'));
     const submissionId = newSubmissionRef.id;
 
-    let fileDataForFirestore: { name: string; size: number; type: string; content: string } | undefined = undefined;
+    let filesDataForFirestore: ProjectSubmissionFile[] | undefined = undefined;
     
-    if (validationResult.data.file) {
-      const file = validationResult.data.file;
-      // Convert file to Base64 Data URI on the server
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      const fileContent = `data:${file.type};base64,${buffer.toString('base64')}`;
-      
-      fileDataForFirestore = {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        content: fileContent, // Base64 data URI
-      };
+    if (validationResult.data.files && validationResult.data.files.length > 0) {
+      filesDataForFirestore = await Promise.all(validationResult.data.files.map(async (file) => {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const fileContent = `data:${file.type};base64,${buffer.toString('base64')}`;
+        
+        return {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          content: fileContent, // Base64 data URI
+        };
+      }));
     }
 
     const submissionDataForFirestore = {
       ...validationResult.data,
-      file: fileDataForFirestore, // Store file metadata and content
+      files: filesDataForFirestore, // Store array of file metadata and content
       submittedAt: firestoreServerTimestamp(),
       status: 'pending',
     };
+    // Remove the 'files' field from the top level if it was only for Zod schema and already processed into submissionDataForFirestore.files
+    if ('file' in submissionDataForFirestore) {
+        delete (submissionDataForFirestore as any).file; 
+    }
+
 
     await setDoc(newSubmissionRef, submissionDataForFirestore);
 
@@ -140,11 +145,11 @@ async function updateProjectStatus(id: string, statusUpdate: Partial<ProjectSubm
       ...statusUpdate,
       updatedAt: firestoreServerTimestamp(),
     };
-     // Ensure 'file' is not accidentally set to undefined if not part of statusUpdate
-    if (statusUpdate.file === undefined && 'file' in statusUpdate) {
+     // Ensure 'files' is not accidentally set to undefined if not part of statusUpdate
+    if (statusUpdate.files === undefined && 'files' in statusUpdate) {
         // This case should not happen with current status updates but is a safeguard
-    } else if (statusUpdate.file) {
-        updates.file = statusUpdate.file;
+    } else if (statusUpdate.files) {
+        updates.files = statusUpdate.files;
     }
 
 

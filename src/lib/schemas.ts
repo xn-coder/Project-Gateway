@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-const MAX_FILE_SIZE = 200 * 1024; // 200KB, to accommodate base64 encoding within Firestore document limits
+const MAX_FILE_SIZE_PER_FILE = 200 * 1024; // 200KB per file
+const MAX_FILES_ALLOWED = 5;
 const ALLOWED_FILE_TYPES = [
   'image/jpeg',
   'image/png',
@@ -13,7 +14,7 @@ const ALLOWED_FILE_TYPES = [
 
 const fileSchema = z
   .custom<File>(val => val instanceof File, 'Please upload a file.')
-  .refine(file => file.size <= MAX_FILE_SIZE, `File size should be less than 200KB.`)
+  .refine(file => file.size <= MAX_FILE_SIZE_PER_FILE, `File size should be less than 200KB.`)
   .refine(file => ALLOWED_FILE_TYPES.includes(file.type), `Only .jpg, .jpeg, .png, .webp, .pdf, .doc, .docx, .txt files are allowed.`);
 
 export const submissionSchema = z.object({
@@ -24,7 +25,9 @@ export const submissionSchema = z.object({
   }),
   projectTitle: z.string().min(5, { message: "Project title must be at least 5 characters long." }),
   projectDescription: z.string().min(20, { message: "Project description must be at least 20 characters long." }).max(5000),
-  file: fileSchema.optional(), // Changed from 'files' array to a single optional file
+  files: z.array(fileSchema)
+    .max(MAX_FILES_ALLOWED, `You can upload a maximum of ${MAX_FILES_ALLOWED} files.`)
+    .optional(),
 });
 
 export type SubmissionFormData = z.infer<typeof submissionSchema>;

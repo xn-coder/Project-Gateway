@@ -22,12 +22,14 @@ import { submissionSchema, type SubmissionFormData } from '@/lib/schemas';
 import { submitProject } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UploadCloud, FileText, XCircle } from 'lucide-react';
-import { ScrollArea } from './ui/scroll-area';
+// import { ScrollArea } from './ui/scroll-area'; // Not currently used
+
+const MAX_FILES_ALLOWED = 5; // Sync with schema
 
 export function SubmissionForm() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const form = useForm<SubmissionFormData>({
     resolver: zodResolver(submissionSchema),
@@ -37,36 +39,46 @@ export function SubmissionForm() {
       phone: '',
       projectTitle: '',
       projectDescription: '',
-      file: undefined, // Changed from files: []
+      files: [],
     },
   });
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
-      const file = event.target.files[0]; // Take the first file
-      setSelectedFile(file);
-      form.setValue('file', file, { shouldValidate: true });
-    } else {
-      // If no file is selected (e.g., user cancels file dialog), clear existing selection
-      setSelectedFile(null);
-      form.setValue('file', undefined, { shouldValidate: true });
+      const newFiles = Array.from(event.target.files);
+      const combinedFiles = [...selectedFiles, ...newFiles];
+      
+      if (combinedFiles.length > MAX_FILES_ALLOWED) {
+        toast({
+          title: "File Limit Exceeded",
+          description: `You can upload a maximum of ${MAX_FILES_ALLOWED} files.`,
+          variant: "destructive",
+        });
+        // Reset input to allow re-selection if needed
+        event.target.value = '';
+        return;
+      }
+      
+      setSelectedFiles(combinedFiles);
+      form.setValue('files', combinedFiles, { shouldValidate: true });
     }
-     // Reset the input value to allow re-selecting the same file after removing it
+    // Reset the input value to allow re-selecting the same file after removing it or adding more
     event.target.value = '';
   };
 
-  const removeFile = () => {
-    setSelectedFile(null);
-    form.setValue('file', undefined, { shouldValidate: true });
+  const removeFile = (fileIndex: number) => {
+    const updatedFiles = selectedFiles.filter((_, index) => index !== fileIndex);
+    setSelectedFiles(updatedFiles);
+    form.setValue('files', updatedFiles.length > 0 ? updatedFiles : undefined, { shouldValidate: true });
   };
 
   async function onSubmit(data: SubmissionFormData) {
     setIsSubmitting(true);
     try {
-      // Ensure 'file' is undefined if null, not passed as null to the action
+      // Ensure 'files' is an array or undefined
       const dataToSubmit = {
         ...data,
-        file: data.file || undefined,
+        files: data.files && data.files.length > 0 ? data.files : undefined,
       };
       const result = await submitProject(dataToSubmit);
       if (result.success) {
@@ -75,7 +87,7 @@ export function SubmissionForm() {
           description: result.message,
         });
         form.reset();
-        setSelectedFile(null);
+        setSelectedFiles([]);
       } else {
         toast({
           title: 'Submission Failed',
@@ -182,59 +194,66 @@ export function SubmissionForm() {
 
             <FormField
               control={form.control}
-              name="file" // Changed from 'files'
-              render={() => ( // field prop is not directly used here for file input
+              name="files"
+              render={() => (
                 <FormItem>
-                  <FormLabel>Supporting Document (Optional)</FormLabel>
+                  <FormLabel>Supporting Documents (Optional)</FormLabel>
                   <FormControl>
                     <div>
                       <Label
                         htmlFor="file-upload"
-                        className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer border-input bg-background hover:bg-muted transition-colors"
+                        className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer border-input bg-background hover:bg-muted transition-colors ${selectedFiles.length >= MAX_FILES_ALLOWED ? 'cursor-not-allowed opacity-50' : ''}`}
                       >
                         <UploadCloud className="w-10 h-10 text-muted-foreground mb-2" />
                         <span className="text-sm text-muted-foreground">
-                          {selectedFile ? selectedFile.name : "Drag & drop a file here, or click to select"}
+                          {selectedFiles.length > 0 
+                            ? `${selectedFiles.length} file(s) selected` 
+                            : "Drag & drop files here, or click to select"}
                         </span>
                         <span className="text-xs text-muted-foreground mt-1">
-                          Max 1 file, 200KB. PDF, DOCX, TXT, JPG, PNG.
+                          Max {MAX_FILES_ALLOWED} files, 200KB each. PDF, DOCX, TXT, JPG, PNG.
                         </span>
                       </Label>
                       <Input
                         id="file-upload"
                         type="file"
-                        // removed 'multiple' attribute
+                        multiple // Allow multiple file selection
                         className="hidden"
                         onChange={handleFileChange}
                         accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.txt"
+                        disabled={selectedFiles.length >= MAX_FILES_ALLOWED}
                       />
                     </div>
                   </FormControl>
                   <FormMessage />
-                  {selectedFile && (
-                    <div className="mt-2">
-                      <div
-                        className="flex items-center justify-between p-2 border rounded-md bg-secondary/50"
-                      >
-                        <div className="flex items-center space-x-2 overflow-hidden">
-                          <FileText className="h-5 w-5 shrink-0 text-secondary-foreground" />
-                          <span className="text-sm text-secondary-foreground truncate" title={selectedFile.name}>
-                            {selectedFile.name}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            ({(selectedFile.size / 1024).toFixed(1)} KB)
-                          </span>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={removeFile}
+                  {selectedFiles.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-sm font-medium">Selected files:</p>
+                      {selectedFiles.map((file, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-2 border rounded-md bg-secondary/50"
                         >
-                          <XCircle className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                          <div className="flex items-center space-x-2 overflow-hidden">
+                            <FileText className="h-5 w-5 shrink-0 text-secondary-foreground" />
+                            <span className="text-sm text-secondary-foreground truncate" title={file.name}>
+                              {file.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              ({(file.size / 1024).toFixed(1)} KB)
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => removeFile(index)}
+                          >
+                            <XCircle className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </FormItem>
