@@ -18,6 +18,8 @@ import {
   orderBy,
   Timestamp,
   DocumentData,
+  deleteField, // Import deleteField
+  FieldValue,
 } from 'firebase/firestore';
 
 // Helper to convert Firestore document data to ProjectSubmission type
@@ -29,7 +31,7 @@ const fromFirestoreDoc = (id: string, data: DocumentData): ProjectSubmission | n
     id: id,
     name: data.name,
     email: data.email,
-    phone: data.phone || undefined,
+    phone: data.phone === null ? undefined : (data.phone || undefined), // Handle null from DB
     projectTitle: data.projectTitle,
     projectDescription: data.projectDescription,
     files: data.files ? (data.files as Array<any>).map(file => ({ // Ensure files is treated as an array
@@ -41,8 +43,8 @@ const fromFirestoreDoc = (id: string, data: DocumentData): ProjectSubmission | n
     submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate().toISOString() : (data.submittedAt || new Date().toISOString()),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
     status: data.status,
-    acceptanceConditions: data.acceptanceConditions || undefined,
-    rejectionReason: data.rejectionReason || undefined,
+    acceptanceConditions: data.acceptanceConditions === null ? undefined : (data.acceptanceConditions || undefined), // Handle null
+    rejectionReason: data.rejectionReason === null ? undefined : (data.rejectionReason || undefined), // Handle null
   };
 };
 
@@ -79,16 +81,17 @@ export async function submitProject(
       }));
     }
 
-    const submissionDataForFirestore = {
-      ...validationResult.data,
-      files: filesDataForFirestore, // Store array of file metadata and content
+    const submissionDataForFirestore: Omit<ProjectSubmission, 'id' | 'submittedAt' | 'updatedAt' | 'status'> & { files?: ProjectSubmissionFile[], submittedAt?: FieldValue } = {
+      name: validationResult.data.name,
+      email: validationResult.data.email,
+      projectTitle: validationResult.data.projectTitle,
+      projectDescription: validationResult.data.projectDescription,
+      // Conditionally add fields only if they have a value, to avoid storing empty strings if not desired
+      ...(validationResult.data.phone && { phone: validationResult.data.phone }),
+      ...(filesDataForFirestore && { files: filesDataForFirestore }),
       submittedAt: firestoreServerTimestamp(),
       status: 'pending',
     };
-    // Remove the 'files' field from the top level if it was only for Zod schema and already processed into submissionDataForFirestore.files
-    if ('file' in submissionDataForFirestore) {
-        delete (submissionDataForFirestore as any).file; 
-    }
 
 
     await setDoc(newSubmissionRef, submissionDataForFirestore);
@@ -144,22 +147,33 @@ export async function deleteProject(id: string): Promise<{ success: boolean; mes
   }
 }
 
-async function updateProjectStatus(id: string, statusUpdate: Partial<ProjectSubmission>): Promise<{ success: boolean; message: string }> {
+// Type for the data passed to updateProjectStatus, allowing FieldValue for clearable fields
+type ProjectStatusUpdateData = Partial<Omit<ProjectSubmission, 'id' | 'submittedAt' | 'updatedAt'>> & {
+  acceptanceConditions?: string | FieldValue;
+  rejectionReason?: string | FieldValue;
+};
+
+
+async function updateProjectStatus(id: string, statusUpdate: ProjectStatusUpdateData): Promise<{ success: boolean; message: string }> {
    try {
     const submissionDocRef = doc(db, 'submissions', id);
-    const updates: DocumentData = { // Use DocumentData for updates
-      ...statusUpdate,
-      updatedAt: firestoreServerTimestamp(),
-    };
-     // Ensure 'files' is not accidentally set to undefined if not part of statusUpdate
-    if (statusUpdate.files === undefined && 'files' in statusUpdate) {
-        // This case should not happen with current status updates but is a safeguard
-    } else if (statusUpdate.files) {
-        updates.files = statusUpdate.files;
+    
+    const updatesToApply: DocumentData = {};
+    // Iterate over the statusUpdate object and add only non-undefined properties to updatesToApply
+    // This ensures that if a field is not present in statusUpdate or is explicitly 'undefined',
+    // it won't be sent to Firestore, preventing errors or unintended field deletions.
+    // Fields intended for deletion must be explicitly set to deleteField() by the caller.
+    for (const key in statusUpdate) {
+      if (Object.prototype.hasOwnProperty.call(statusUpdate, key)) {
+        const typedKey = key as keyof ProjectStatusUpdateData;
+        if (statusUpdate[typedKey] !== undefined) {
+          updatesToApply[typedKey] = statusUpdate[typedKey];
+        }
+      }
     }
+    updatesToApply.updatedAt = firestoreServerTimestamp();
 
-
-    await updateDoc(submissionDocRef, updates);
+    await updateDoc(submissionDocRef, updatesToApply);
     
     const docSnap = await getDoc(submissionDocRef);
     if (docSnap.exists()) {
@@ -195,8 +209,8 @@ async function updateProjectStatus(id: string, statusUpdate: Partial<ProjectSubm
 export async function acceptProject(id: string): Promise<{ success: boolean; message: string }> {
   return updateProjectStatus(id, { 
     status: 'accepted', 
-    acceptanceConditions: undefined, 
-    rejectionReason: undefined 
+    acceptanceConditions: deleteField(), // Explicitly remove this field
+    rejectionReason: deleteField()     // Explicitly remove this field
   });
 }
 
@@ -207,7 +221,7 @@ export async function acceptProjectWithConditions(id: string, conditions: string
   return updateProjectStatus(id, { 
     status: 'acceptedWithConditions', 
     acceptanceConditions: conditions,
-    rejectionReason: undefined 
+    rejectionReason: deleteField() // Explicitly remove this field
   });
 }
 
@@ -218,7 +232,7 @@ export async function rejectProject(id: string, reason: string): Promise<{ succe
   return updateProjectStatus(id, { 
     status: 'rejected', 
     rejectionReason: reason,
-    acceptanceConditions: undefined 
+    acceptanceConditions: deleteField() // Explicitly remove this field
   });
 }
 
