@@ -1,6 +1,6 @@
 "use client";
 
-import *_React from 'react'; // Workaround for "React refers to a UMD global"
+import * as _React from 'react'; // Workaround for "React refers to a UMD global"
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {

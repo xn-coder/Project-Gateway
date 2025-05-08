@@ -1,6 +1,6 @@
 "use client";
 
-import *_React from 'react'; // Workaround for "React refers to a UMD global"
+import * as _React from 'react'; // Workaround for "React refers to a UMD global"
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, Controller } from 'react-hook-form';
 import { Button } from '@/components/ui/button';

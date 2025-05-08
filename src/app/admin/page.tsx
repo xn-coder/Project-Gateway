@@ -1,6 +1,6 @@
 "use client";
 
-import *_React from 'react';
+import * as _React from 'react';
 import { getProjects } from '@/app/actions';
 import type { ProjectSubmission } from '@/types';
 import { SubmissionsTable } from '@/components/admin/submissions-table';
