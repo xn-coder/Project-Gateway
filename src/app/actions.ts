@@ -20,17 +20,6 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 
-// Helper to convert file to Base64 Data URI
-const fileToDataURI = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
-
-
 // Helper to convert Firestore document data to ProjectSubmission type
 const fromFirestoreDoc = (id: string, data: DocumentData): ProjectSubmission | null => {
   if (!data) {
@@ -77,7 +66,11 @@ export async function submitProject(
     
     if (validationResult.data.file) {
       const file = validationResult.data.file;
-      const fileContent = await fileToDataURI(file);
+      // Convert file to Base64 Data URI on the server
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const fileContent = `data:${file.type};base64,${buffer.toString('base64')}`;
+      
       fileDataForFirestore = {
         name: file.name,
         size: file.size,
@@ -210,3 +203,4 @@ export async function rejectProject(id: string, reason: string): Promise<{ succe
     acceptanceConditions: undefined 
   });
 }
+
